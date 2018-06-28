@@ -46,39 +46,25 @@ class CoRegistration():
                                                               sitk.CenteredTransformInitializerFilter.GEOMETRY)
 
         # Returning the resampled image.
-        return sitk.Resample(moving_image,
+        return (sitk.Resample(moving_image,
                              fixed_image,
                              initial_transform,
                              sitk.sitkLinear,
                              0.0,
-                             moving_image.GetPixelID())
+                             moving_image.GetPixelID()), initial_transform)
 
-    # Converts all the images to numpy array.
-    def images_to_np_array(self, moving_image, fixed_image, resampled_image):
-        # Returning a tuple with images converted to numpy arrays
-        return (sitk.GetArrayFromImage(moving_image),
-                sitk.GetArrayFromImage(fixed_image),
-                sitk.GetArrayFromImage(resampled_image))
+    # Converts a specified image to numpy array.
+    def image_to_nparray(self, image):
+        return sitk.GetArrayFromImage(image)
 
     # Plot all the images.
-    def plot_images(self, moving_image_np, fixed_image_np, resampled_image_np):
-        # Plots moving image.
-        print(str(moving_image_np.shape))
-        depth_level, _, _ = moving_image_np.shape
-        plt.imshow(moving_image_np[int(depth_level / 2), :, :])
-        plt.show()
-
-        # Plots fixed image.
-        print(str(fixed_image_np.shape))
-        depth_level, _, _ = fixed_image_np.shape
-        plt.imshow(fixed_image_np[int(depth_level / 2), :, :])
-        plt.show()
-
-        # Plots resampled image.
-        print(str(resampled_image_np.shape))
-        depth_level, _, _ = resampled_image_np.shape
-        plt.imshow(resampled_image_np[int(depth_level / 2), :, :])
-        plt.show()
+    def plot_images(self, *images):
+        # Loop throgh images and plot them.
+        for image in images:
+            print(str(image.shape))
+            depth_level, _, _ = image.shape
+            plt.imshow(image[int(depth_level / 2), :, :])
+            plt.show()
         print("--------------------------------------")
 
     # Converts image as numpy array to nifti and saves it.
@@ -86,23 +72,43 @@ class CoRegistration():
         nifti_image = nib.Nifti1Image(image, affine=np.eye(4))
         nib.save(nifti_image, output_path)
 
-    # TODO: this method needs to be rewritten and understood
-    def coregister(self, fixed_image, resampled_image, initial_transform):
+    # Coregistration of the images.
+    def coregister(self, moving_image, fixed_image, initial_transform):
         registration_method = sitk.ImageRegistrationMethod()
 
+        # Similarity metric settings.
         registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
         registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
         registration_method.SetMetricSamplingPercentage(0.01)
 
         registration_method.SetInterpolator(sitk.sitkLinear)
 
-        registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=60)
+        # Optimizer settings.
+        registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=100,
+                                                          convergenceMinimumValue=1e-6, convergenceWindowSize=10)
         registration_method.SetOptimizerScalesFromPhysicalShift()
 
+        # Setup for the multi-resolution framework.
+        registration_method.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+        registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+        registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+
+        # Don't optimize in-place, we would possibly like to run this cell multiple times.
         registration_method.SetInitialTransform(initial_transform, inPlace=False)
 
-        return registration_method.Execute(fixed_image, resampled_image)
+        # Execute the final transformation.
+        final_transform = registration_method.Execute(sitk.Cast(fixed_image, sitk.sitkFloat32),
+                                                      sitk.Cast(moving_image, sitk.sitkFloat32))
 
+        # Resample the final image.
+        return sitk.Resample(moving_image,
+                             fixed_image,
+                             final_transform,
+                             sitk.sitkLinear,
+                             0.0,
+                             moving_image.GetPixelID())
+
+    # Starts the coregistration.
     def start_coregistration(self):
         # Reading dicom files.
         reader_first, reader_second = self.read_dicom_files()
@@ -111,30 +117,32 @@ class CoRegistration():
         moving_image, fixed_image = self.compute_dicom_files(reader_first, reader_second)
 
         # Resampling images.
-        resampled_image = self.center_resample(moving_image, fixed_image)
+        resampled_image, initial_transform = self.center_resample(moving_image, fixed_image)
+
+        # Final resample.
+        final_resampled_image = self.coregister(moving_image, fixed_image, initial_transform)
 
         # Converting images from <Image> object to numpy array.
-        moving_image_np, fixed_image_np, resampled_image_np = self.images_to_np_array(moving_image,
-                                                                                      fixed_image,
-                                                                                      resampled_image)
+        moving_image_np = self.image_to_nparray(moving_image)
+        fixed_image_np = self.image_to_nparray(fixed_image)
+        resampled_image_np = self.image_to_nparray(resampled_image)
+        final_resampled_image_np = self.image_to_nparray(final_resampled_image)
 
         # Plotting images.
-        self.plot_images(moving_image_np, fixed_image_np, resampled_image_np)
+        self.plot_images(moving_image_np,
+                         fixed_image_np,
+                         resampled_image_np,
+                         final_resampled_image_np)
 
         # Saving images as nifti to the disk.
-        self.nparray_to_nifti(resampled_image, "")
+        self.nparray_to_nifti(final_resampled_image_np, self.output_dir + self.output_name)
 
 
-for i in range(0, 8):
-    FIRST_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa001/st000/se00{i}"
-    SECOND_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa001/st000/se00{i+1}"
+for i in range(0, 6, 2):
+    FIRST_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa002/st000/se00{i}"
+    SECOND_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa002/st000/se00{i+1}"
     coregistration = CoRegistration(FIRST_IMAGE_DIR,
                                     SECOND_IMAGE_DIR,
-                                    "/Users/riccardobusetti/Desktop",
-                                    f"resampled_image_{i}")
+                                    f"/Users/riccardobusetti/Desktop",
+                                    f"/resampled_image_{i}.nii")
     coregistration.start_coregistration()
-
-'''FIRST_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa001/st000/se000"
-SECOND_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa001/st000/se001"
-coregistration = CoRegistration(FIRST_IMAGE_DIR, SECOND_IMAGE_DIR)
-coregistration.start_coregistration()'''
