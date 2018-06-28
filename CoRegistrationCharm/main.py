@@ -27,31 +27,51 @@ class CoRegistration():
         reader_second.SetOutputPixelType(sitk.sitkFloat32)
         dicom_second = reader_second.GetGDCMSeriesFileNames(self.second_dir)
         reader_second.SetFileNames(dicom_second)
-        return (reader_first, reader_second)
+        return reader_first, reader_second
 
     # Computes the dicom files from the reader and returns a "3D"
     # image, that will be then resampled.
     def compute_dicom_files(self, reader_first, reader_second):
         # Returning a tuple with images.
-        return (reader_first.Execute(),
-                reader_second.Execute())
+        return reader_first.Execute(), reader_second.Execute()
 
     # Resampling process of the two images, that will use
     # the centered transform algorithm.
-    def center_resample(self, moving_image, fixed_image):
-        # Initiate the center transformation.
-        initial_transform = sitk.CenteredTransformInitializer(fixed_image,
-                                                              moving_image,
-                                                              sitk.Euler3DTransform(),
-                                                              sitk.CenteredTransformInitializerFilter.GEOMETRY)
-
+    def resample(self, moving_image, fixed_image):
         # Returning the resampled image.
-        return (sitk.Resample(moving_image,
+        return sitk.Resample(moving_image, fixed_image)
+
+    def final_resample(self, fixed_image, resampled_image, transformation):
+        return sitk.Resample(resampled_image,
                              fixed_image,
-                             initial_transform,
+                             transformation,
                              sitk.sitkLinear,
                              0.0,
-                             moving_image.GetPixelID()), initial_transform)
+                             resampled_image.GetPixelIDValue())
+
+    # Getting the initial transform.
+    def get_initial_transform(self, fixed_image, resampled_image):
+        return sitk.CenteredTransformInitializer(fixed_image,
+                                            resampled_image,
+                                            sitk.Euler3DTransform(),
+                                            sitk.CenteredTransformInitializerFilter.GEOMETRY)
+
+    # Getting the secondary transform.
+    def get_secondary_transform(self, fixed_image, resampled_image, initial_transform):
+        registration_method = sitk.ImageRegistrationMethod()
+
+        registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+        registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
+        registration_method.SetMetricSamplingPercentage(0.01)
+
+        registration_method.SetInterpolator(sitk.sitkLinear)
+
+        registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=60)
+        registration_method.SetOptimizerScalesFromPhysicalShift()
+
+        registration_method.SetInitialTransform(initial_transform, inPlace=False)
+
+        return registration_method.Execute(fixed_image, resampled_image)
 
     # Converts a specified image to numpy array.
     def image_to_nparray(self, image):
@@ -72,42 +92,6 @@ class CoRegistration():
         nifti_image = nib.Nifti1Image(image, affine=np.eye(4))
         nib.save(nifti_image, output_path)
 
-    # Coregistration of the images.
-    def coregister(self, moving_image, fixed_image, initial_transform):
-        registration_method = sitk.ImageRegistrationMethod()
-
-        # Similarity metric settings.
-        registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
-        registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
-        registration_method.SetMetricSamplingPercentage(0.01)
-
-        registration_method.SetInterpolator(sitk.sitkLinear)
-
-        # Optimizer settings.
-        registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=100,
-                                                          convergenceMinimumValue=1e-6, convergenceWindowSize=10)
-        registration_method.SetOptimizerScalesFromPhysicalShift()
-
-        # Setup for the multi-resolution framework.
-        registration_method.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
-        registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
-        registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
-
-        # Don't optimize in-place, we would possibly like to run this cell multiple times.
-        registration_method.SetInitialTransform(initial_transform, inPlace=False)
-
-        # Execute the final transformation.
-        final_transform = registration_method.Execute(sitk.Cast(fixed_image, sitk.sitkFloat32),
-                                                      sitk.Cast(moving_image, sitk.sitkFloat32))
-
-        # Resample the final image.
-        return sitk.Resample(moving_image,
-                             fixed_image,
-                             final_transform,
-                             sitk.sitkLinear,
-                             0.0,
-                             moving_image.GetPixelID())
-
     # Starts the coregistration.
     def start_coregistration(self):
         # Reading dicom files.
@@ -117,30 +101,31 @@ class CoRegistration():
         moving_image, fixed_image = self.compute_dicom_files(reader_first, reader_second)
 
         # Resampling images.
-        resampled_image, initial_transform = self.center_resample(moving_image, fixed_image)
+        resampled_image = self.resample(moving_image, fixed_image)
 
-        # Final resample.
-        final_resampled_image = self.coregister(moving_image, fixed_image, initial_transform)
+        '''initial_transformation = self.get_initial_transform(fixed_image, resampled_image)
+        resampled_image = self.final_resample(fixed_image, resampled_image, initial_transformation)
+
+        secondary_transformation = self.get_secondary_transform(fixed_image, resampled_image, initial_transformation)
+        resampled_image = self.final_resample(fixed_image, resampled_image, secondary_transformation)'''
 
         # Converting images from <Image> object to numpy array.
         moving_image_np = self.image_to_nparray(moving_image)
         fixed_image_np = self.image_to_nparray(fixed_image)
         resampled_image_np = self.image_to_nparray(resampled_image)
-        final_resampled_image_np = self.image_to_nparray(final_resampled_image)
 
         # Plotting images.
         self.plot_images(moving_image_np,
                          fixed_image_np,
-                         resampled_image_np,
-                         final_resampled_image_np)
+                         resampled_image_np)
 
         # Saving images as nifti to the disk.
-        self.nparray_to_nifti(final_resampled_image_np, self.output_dir + self.output_name)
+        # self.nparray_to_nifti(final_resampled_image_np, self.output_dir + self.output_name)
 
 
-for i in range(0, 6, 2):
-    FIRST_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa002/st000/se00{i}"
-    SECOND_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa002/st000/se00{i+1}"
+for i in range(0, 1):
+    FIRST_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa001/st000/se00{i}"
+    SECOND_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa001/st000/se00{i+1}"
     coregistration = CoRegistration(FIRST_IMAGE_DIR,
                                     SECOND_IMAGE_DIR,
                                     f"/Users/riccardobusetti/Desktop",
