@@ -1,9 +1,7 @@
 import nibabel as nib
-import numpy as np
-import matplotlib.pyplot as plt
-import SimpleITK as sitk
-import os
-import pydicom
+
+from registration_utilities import *
+
 
 class CoRegistration():
 
@@ -25,13 +23,16 @@ class CoRegistration():
         return (reader_first, reader_second)
 
     def execute(self, reader_first, reader_second):
+        # Returning a tuple with images
         return (reader_first.Execute(),
                 reader_second.Execute())
 
     def resample(self, moving_image, fixed_image):
+        # Returning the resampled image
         return sitk.Resample(moving_image, fixed_image)
 
     def images_to_np_array(self, moving_image, fixed_image, resampled_image):
+        # Returning a tuple with images converted to numpy arrays
         return (sitk.GetArrayFromImage(moving_image),
                 sitk.GetArrayFromImage(fixed_image),
                 sitk.GetArrayFromImage(resampled_image))
@@ -52,7 +53,35 @@ class CoRegistration():
         print("--------------------------------------")
 
     def convert_resampled_np_to_nifti(self, resampled_image_np):
+        # Returns the numpy array converted to nifti format
         return nib.Nifti1Image(resampled_image_np, affine=np.eye(4))
+
+    def transform(self, fixed_image, resampled_image):
+        # Returns the centered images
+        return sitk.CenteredTransformInitializer(fixed_image,
+                                          resampled_image,
+                                          sitk.Euler3DTransform(),
+                                          sitk.CenteredTransformInitializerFilter.GEOMETRY)
+
+    def coregister(self, fixed_image, resampled_image, initial_transform):
+        registration_method = sitk.ImageRegistrationMethod()
+
+        registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+        registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
+        registration_method.SetMetricSamplingPercentage(0.01)
+
+        registration_method.SetInterpolator(sitk.sitkLinear)
+
+        registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=60)
+        registration_method.SetOptimizerScalesFromPhysicalShift()
+
+        registration_method.SetInitialTransform(initial_transform, inPlace=False)
+
+        registration_method.AddCommand(sitk.sitkStartEvent, metric_start_plot)
+        registration_method.AddCommand(sitk.sitkEndEvent, metric_end_plot)
+        registration_method.AddCommand(sitk.sitkIterationEvent,
+                                       lambda: metric_plot_values(registration_method))
+        return registration_method.Execute(fixed_image, resampled_image)
 
     def start_coregistration(self):
         reader_first, reader_second = self.get_meta_data()
@@ -61,14 +90,15 @@ class CoRegistration():
         moving_image_np, fixed_image_np, resampled_image_np = self.images_to_np_array(moving_image,
                                                                                       fixed_image,
                                                                                       resampled_image)
-        self.plot_images(moving_image_np, fixed_image_np, resampled_image_np)
-        nifti_resampled_image = self.convert_resampled_np_to_nifti(resampled_image_np)
-        nib.save(nifti_resampled_image, "/Users/riccardobusetti/Desktop/resampled_image.nii")
-        return (moving_image, fixed_image)
+        transform = self.transform(fixed_image, resampled_image)
+        final_transform = self.coregister(fixed_image, resampled_image, transform)
+        # self.plot_images(moving_image_np, fixed_image_np, resampled_image_np)
+        # nifti_resampled_image = self.convert_resampled_np_to_nifti(resampled_image_np)
+        # nib.save(nifti_resampled_image, "/Users/riccardobusetti/Desktop/resampled_image.nii")
 
 
 for i in range(0, 8):
     FIRST_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa001/st000/se00{i}"
     SECOND_IMAGE_DIR = f"/Users/riccardobusetti/Desktop/tmp_processed/pa001/st000/se00{i+1}"
     coregistration = CoRegistration(FIRST_IMAGE_DIR, SECOND_IMAGE_DIR)
-    coregistration.start_coregistration()
+    moving_image, fixed_image, resampled_image = coregistration.start_coregistration()
