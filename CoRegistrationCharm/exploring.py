@@ -11,11 +11,11 @@ def load_patients():
         patient_dir.name: {
             study_dir.name: {
                 sequence_dir.name: sum(1 for _ in os.scandir(sequence_dir))
-                for sequence_dir in os.scandir(study_dir)
+                for sequence_dir in os.scandir(study_dir) if not sequence_dir.name.startswith('.')
             }
-            for study_dir in os.scandir(patient_dir)
+            for study_dir in os.scandir(patient_dir) if not study_dir.name.startswith('.')
         }
-        for patient_dir in os.scandir(PATIENTS_DIR)
+        for patient_dir in os.scandir(PATIENTS_DIR) if not patient_dir.name.startswith('.')
     }
 
 
