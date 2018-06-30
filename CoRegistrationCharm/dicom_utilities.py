@@ -6,9 +6,9 @@ from registration_utilities import *
 class CoRegistration():
 
     # Initialization method of the class.
-    def __init__(self, first_dir, second_dir, output_dir, output_name):
-        self.first_dir = first_dir
-        self.second_dir = second_dir
+    def __init__(self, moving_image_dir, fixed_image_dir, output_dir, output_name):
+        self.moving_image_dir = moving_image_dir
+        self.fixed_image_dir = fixed_image_dir
         self.output_dir = output_dir
         self.output_name = output_name
 
@@ -18,14 +18,14 @@ class CoRegistration():
     def read_dicom_files(self):
         # Reading meta data of the first sequence of images.
         reader_first = sitk.ImageSeriesReader()
-        reader_first.SetOutputPixelType(sitk.sitkFloat32)
-        dicom_first = reader_first.GetGDCMSeriesFileNames(self.first_dir)
+        reader_first.SetOutputPixelType(sitk.sitkFloat64)
+        dicom_first = reader_first.GetGDCMSeriesFileNames(self.moving_image_dir)
         reader_first.SetFileNames(dicom_first)
 
         # Reading meta data of the second sequence of images.
         reader_second = sitk.ImageSeriesReader()
-        reader_second.SetOutputPixelType(sitk.sitkFloat32)
-        dicom_second = reader_second.GetGDCMSeriesFileNames(self.second_dir)
+        reader_second.SetOutputPixelType(sitk.sitkFloat64)
+        dicom_second = reader_second.GetGDCMSeriesFileNames(self.fixed_image_dir)
         reader_second.SetFileNames(dicom_second)
         return reader_first, reader_second
 
