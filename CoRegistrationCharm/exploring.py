@@ -1,7 +1,7 @@
 import os
 from operator import itemgetter
 
-from dicom_utilities import CoRegistration
+from dicom_utilities import RegistrationHelper
 
 PATIENTS_DIR = 'tmp_processed'
 
@@ -33,7 +33,7 @@ def do_coreg(data):
 
             for moving, _ in set(seqs) - {fixed}:
                 try:
-                    CoRegistration(
+                    RegistrationHelper(
                         os.path.join(PATIENTS_DIR, patient, study, moving),
                         os.path.join(PATIENTS_DIR, patient, study, fixed),
                         out_study_dir,
@@ -41,5 +41,6 @@ def do_coreg(data):
                     ).start_coregistration()
                 except RuntimeError:
                     pass
+
 
 do_coreg(load_patients())

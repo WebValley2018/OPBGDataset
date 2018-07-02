@@ -1,9 +1,39 @@
+import os
+import pydicom as pd
 import nibabel as nib
+import numpy as np
+import matplotlib.pyplot as plt
+import SimpleITK as Sitk
 
-from registration_utilities import *
+from moviepy.editor import *
 
-# Helper class to perform coregistration on images.
-class CoRegistration():
+
+# Helper class that maps the folders of the OPBG dataset.
+# author: Ettore Forigo.
+class OPBGExplorer:
+
+    # Initialization method of the class.
+    def __init__(self, root_dir):
+        self.root_dir = root_dir
+
+    # Maps the folders as nested dictionaries that will be
+    # used to feed the registration algorithm.
+    def load_patients(self):
+        return {
+            patient_dir.name: {
+                study_dir.name: {
+                    sequence_dir.name: sum(1 for _ in os.scandir(sequence_dir))
+                    for sequence_dir in os.scandir(study_dir) if not sequence_dir.name.startswith('.')
+                }
+                for study_dir in os.scandir(patient_dir) if not study_dir.name.startswith('.')
+            }
+            for patient_dir in os.scandir(self.root_dir) if not patient_dir.name.startswith('.')
+        }
+
+
+# Helper class to perform registration on images.
+# author: Riccardo Busetti.
+class RegistrationHelper:
 
     # Initialization method of the class.
     def __init__(self, moving_image_dir, fixed_image_dir, output_dir, output_name):
@@ -17,16 +47,17 @@ class CoRegistration():
     # operations on the dicom files.
     def read_dicom_files(self):
         # Reading meta data of the first sequence of images.
-        reader_first = sitk.ImageSeriesReader()
-        reader_first.SetOutputPixelType(sitk.sitkFloat64)
+        reader_first = Sitk.ImageSeriesReader()
+        reader_first.SetOutputPixelType(Sitk.sitkFloat64)
         dicom_first = reader_first.GetGDCMSeriesFileNames(self.moving_image_dir)
         reader_first.SetFileNames(dicom_first)
 
         # Reading meta data of the second sequence of images.
-        reader_second = sitk.ImageSeriesReader()
-        reader_second.SetOutputPixelType(sitk.sitkFloat64)
+        reader_second = Sitk.ImageSeriesReader()
+        reader_second.SetOutputPixelType(Sitk.sitkFloat64)
         dicom_second = reader_second.GetGDCMSeriesFileNames(self.fixed_image_dir)
         reader_second.SetFileNames(dicom_second)
+
         return reader_first, reader_second
 
     # Computes the dicom files from the reader and returns a "3D"
@@ -38,33 +69,33 @@ class CoRegistration():
     # Resampling process of the two images.
     def resample(self, moving_image, fixed_image):
         # Returns the resampled image.
-        return sitk.Resample(moving_image, fixed_image)
+        return Sitk.Resample(moving_image, fixed_image)
 
     def final_resample(self, fixed_image, resampled_image, transformation):
-        return sitk.Resample(resampled_image,
+        return Sitk.Resample(resampled_image,
                              fixed_image,
                              transformation,
-                             sitk.sitkLinear,
+                             Sitk.sitkLinear,
                              0.0,
                              resampled_image.GetPixelIDValue())
 
     # Getting the initial transform.
     def get_initial_transform(self, fixed_image, resampled_image):
         # Returns the centered transorm.
-        return sitk.CenteredTransformInitializer(fixed_image,
-                                            resampled_image,
-                                            sitk.Euler3DTransform(),
-                                            sitk.CenteredTransformInitializerFilter.GEOMETRY)
+        return Sitk.CenteredTransformInitializer(fixed_image,
+                                                 resampled_image,
+                                                 Sitk.Euler3DTransform(),
+                                                 Sitk.CenteredTransformInitializerFilter.GEOMETRY)
 
     # Getting the secondary transform.
     def get_secondary_transform(self, fixed_image, resampled_image, initial_transform):
-        registration_method = sitk.ImageRegistrationMethod()
+        registration_method = Sitk.ImageRegistrationMethod()
 
         registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
         registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
         registration_method.SetMetricSamplingPercentage(0.01)
 
-        registration_method.SetInterpolator(sitk.sitkLinear)
+        registration_method.SetInterpolator(Sitk.sitkLinear)
 
         registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=60)
         registration_method.SetOptimizerScalesFromPhysicalShift()
@@ -77,7 +108,7 @@ class CoRegistration():
     # Converts a specified image to numpy array.
     def image_to_nparray(self, image):
         # Returns the numpy array of a specific image.
-        return sitk.GetArrayFromImage(image)
+        return Sitk.GetArrayFromImage(image)
 
     # Plot all the images.
     def plot_images(self, *images):
@@ -125,3 +156,39 @@ class CoRegistration():
 
         # Saving images as nifti to the disk.
         self.nparray_to_nifti(resampled_image_np, self.output_dir + self.output_name)
+
+
+# Helper class to help read dicom files.
+# author: Riccardo Busetti.
+class DicomHelper:
+
+    # Initialization method of the class.
+    def __init__(self):
+        pass
+
+    # Creates a gif from an array, in our case
+    # it will convert a 3D nparray to a gid.
+    def dicom_to_gif(self, output_dir, array, fps=10, scale=1.0):
+        # Ensure that the file has the .gif extension.
+        fname, _ = os.path.splitext(output_dir)
+        output_dir = fname + '.gif'
+
+        # Copy into the color dimension if the images are black and white.
+        if array.ndim == 3:
+            array = array[..., np.newaxis] * np.ones(3)
+
+        # Make the moviepy clip.
+        clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
+        clip.write_gif(output_dir, fps=fps)
+        return clip
+
+    # Returns a list with the meta data of a dicom file from
+    # a given sequence.
+    def read_dicom_meta_data(self, dicom_dir):
+        dicom_files = list(filter(lambda it: not it.startswith(".") and it != "VERSION", os.listdir(dicom_dir)))
+
+        if len(dicom_files) > 0:
+            return pd.dcmread(os.path.join(dicom_dir, dicom_files[0]))
+        else:
+            return None
+
