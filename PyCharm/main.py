@@ -3,6 +3,7 @@ from operator import itemgetter
 
 PATIENTS_DIR = 'tmp_processed'
 
+
 def do_coreg(data):
     for patient in data:
         for study in data[patient]:
