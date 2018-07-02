@@ -16,6 +16,11 @@ local.properties
 .settings/
 .loadpath
 
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
 # External tool builders
 .externalToolBuilders/
 
