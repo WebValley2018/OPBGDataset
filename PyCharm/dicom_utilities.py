@@ -126,7 +126,7 @@ class RegistrationHelper:
         nib.save(nifti_image, output_path)
 
     # Starts the coregistration.
-    def start_coregistration(self):
+    def start_coregistration(self, save_as_nifti=False):
         # Reading dicom files.
         reader_first, reader_second = self.read_dicom_files()
 
@@ -155,7 +155,8 @@ class RegistrationHelper:
                          resampled_image_np)
 
         # Saving images as nifti to the disk.
-        self.nparray_to_nifti(resampled_image_np, self.output_dir + self.output_name)
+        if save_as_nifti:
+            self.nparray_to_nifti(resampled_image_np, self.output_dir + self.output_name)
 
 
 # Helper class to help read dicom files.
