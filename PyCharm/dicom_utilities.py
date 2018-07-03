@@ -36,11 +36,11 @@ class OPBGExplorer:
 class RegistrationHelper:
 
     # Initialization method of the class.
-    def __init__(self, moving_image_dir, fixed_image_dir, output_dir, output_name):
+    def __init__(self, moving_image_dir, fixed_image_dir, output_dir, output_file_name):
         self.moving_image_dir = moving_image_dir
         self.fixed_image_dir = fixed_image_dir
         self.output_dir = output_dir
-        self.output_name = output_name
+        self.output_name = output_file_name
 
     # Creates the reader object, one for each sequence of
     # dicom images. This readers are then used to perform
@@ -116,7 +116,7 @@ class RegistrationHelper:
         for image in images:
             print(str(image.shape))
             depth_level, _, _ = image.shape
-            plt.imshow(image[int(depth_level / 2), :, :])
+            plt.imshow(image[:, :, depth_level // 2])
             plt.show()
         print("--------------------------------------")
 
@@ -125,8 +125,22 @@ class RegistrationHelper:
         nifti_image = nib.Nifti1Image(image, affine=np.eye(4))
         nib.save(nifti_image, output_path)
 
+    # Aligns the current images correctly.
+    def align_and_trasnform(self, image_np):
+        image_np = np.swapaxes(image_np, 0, 2)
+        return np.fliplr(image_np)
+
+    # Writes on disk the resampled image as .mha file.
+    def write_resampled_image(self, resampled_image):
+        # Join the output directory with the file name.
+        output_dir = os.path.join(self.output_dir, self.output_name + ".mha")
+        # Tell the status.
+        print("Saving image in " + output_dir)
+        # Write image on disk as .mha.
+        Sitk.WriteImage(resampled_image, output_dir)
+
     # Starts the coregistration.
-    def start_coregistration(self, save_as_nifti=False):
+    def start_coregistration(self, save_on_disk=False):
         # Reading dicom files.
         reader_first, reader_second = self.read_dicom_files()
 
@@ -144,19 +158,21 @@ class RegistrationHelper:
         secondary_transformation = self.get_secondary_transform(fixed_image, resampled_image, initial_transformation)
         resampled_image = self.final_resample(fixed_image, resampled_image, secondary_transformation)
 
-        # Converting images from image object to numpy array.
+        # Write the .mha image.
+        if save_on_disk:
+            self.write_resampled_image(resampled_image)
+
+        '''# Converting images from image object to numpy array.
         moving_image_np = self.image_to_nparray(moving_image)
         fixed_image_np = self.image_to_nparray(fixed_image)
         resampled_image_np = self.image_to_nparray(resampled_image)
 
-        # Plotting images.
-        self.plot_images(moving_image_np,
-                         fixed_image_np,
-                         resampled_image_np)
+        # Align and transform the image.
+        resampled_image_np = self.align_and_trasnform(resampled_image_np)
 
         # Saving images as nifti to the disk.
         if save_as_nifti:
-            self.nparray_to_nifti(resampled_image_np, self.output_dir + self.output_name)
+            self.nparray_to_nifti(resampled_image_np, self.output_dir + self.output_name)'''
 
 
 # Helper class to help read dicom files.
