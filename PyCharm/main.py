@@ -10,7 +10,7 @@ def do_registration(data):
 
             fixed, _ = origin_fixed = max(seqs, key=itemgetter(1))
 
-            out_study_dir = os.path.join('/Users/riccardobusetti/Desktop/tmp_processed_mha', patient, study)
+            out_study_dir = os.path.join('/Users/riccardobusetti/Desktop/tmp_processed_nii', patient, study)
 
             if not os.path.exists(out_study_dir):
                 os.makedirs(out_study_dir)
@@ -22,7 +22,9 @@ def do_registration(data):
                         os.path.join(PATIENTS_DIR, patient, study, fixed),
                         out_study_dir,
                         f'coreg_{moving}'
-                    ).start_coregistration(save_on_disk=True)
+                    ).start_coregistration(is_nifti=False,
+                                           save_on_disk=True,
+                                           file_extension=".nii")
                 except RuntimeError:
                     pass
 

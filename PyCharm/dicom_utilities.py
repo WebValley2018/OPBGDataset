@@ -60,6 +60,12 @@ class RegistrationHelper:
 
         return reader_first, reader_second
 
+    # Reads and computes the nifti files.
+    def get_nifti_files(self):
+        return Sitk.ReadImage(self.moving_image_dir), \
+               Sitk.ReadImage(self.fixed_image_dir)
+
+
     # Computes the dicom files from the reader and returns a "3D"
     # image, that will be then resampled.
     def compute_dicom_files(self, reader_first, reader_second):
@@ -130,22 +136,30 @@ class RegistrationHelper:
         image_np = np.swapaxes(image_np, 0, 2)
         return np.fliplr(image_np)
 
-    # Writes on disk the resampled image as .mha file.
-    def write_resampled_image(self, resampled_image):
+    # Writes on disk the resampled image as a specified file.
+    def write_resampled_image(self, resampled_image, file_extension):
         # Join the output directory with the file name.
-        output_dir = os.path.join(self.output_dir, self.output_name + ".mha")
+        output_dir = os.path.join(self.output_dir, self.output_name + file_extension)
         # Tell the status.
         print("Saving image in " + output_dir)
-        # Write image on disk as .mha.
+        # Write image on disk as a specified file.
         Sitk.WriteImage(resampled_image, output_dir)
 
     # Starts the coregistration.
-    def start_coregistration(self, save_on_disk=False):
-        # Reading dicom files.
-        reader_first, reader_second = self.read_dicom_files()
+    def start_coregistration(self, is_nifti=False, save_on_disk=False, file_extension=".mha"):
+        # Variables initialization.
+        moving_image = None
+        fixed_image = None
 
-        # Computing dicom files.
-        moving_image, fixed_image = self.compute_dicom_files(reader_first, reader_second)
+        if is_nifti:
+            # Reading and computing nifti files.
+            moving_image, fixed_image = self.get_nifti_files()
+        else:
+            # Reading dicom files.
+            reader_first, reader_second = self.read_dicom_files()
+
+            # Computing dicom files.
+            moving_image, fixed_image = self.compute_dicom_files(reader_first, reader_second)
 
         # Resampling images.
         resampled_image = self.resample(moving_image, fixed_image)
@@ -158,21 +172,9 @@ class RegistrationHelper:
         secondary_transformation = self.get_secondary_transform(fixed_image, resampled_image, initial_transformation)
         resampled_image = self.final_resample(fixed_image, resampled_image, secondary_transformation)
 
-        # Write the .mha image.
+        # Write the image in the specified format.
         if save_on_disk:
-            self.write_resampled_image(resampled_image)
-
-        '''# Converting images from image object to numpy array.
-        moving_image_np = self.image_to_nparray(moving_image)
-        fixed_image_np = self.image_to_nparray(fixed_image)
-        resampled_image_np = self.image_to_nparray(resampled_image)
-
-        # Align and transform the image.
-        resampled_image_np = self.align_and_trasnform(resampled_image_np)
-
-        # Saving images as nifti to the disk.
-        if save_as_nifti:
-            self.nparray_to_nifti(resampled_image_np, self.output_dir + self.output_name)'''
+            self.write_resampled_image(resampled_image, file_extension)
 
 
 # Helper class to help read dicom files.
