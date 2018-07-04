@@ -21,11 +21,8 @@ class OPBGExplorer:
     def load_patients(self):
         return {
             patient_dir.name: {
-                study_dir.name: {
-                    sequence_dir.name: sum(1 for _ in os.scandir(sequence_dir))
-                    for sequence_dir in os.scandir(study_dir) if not sequence_dir.name.startswith('.')
-                }
-                for study_dir in os.scandir(patient_dir) if not study_dir.name.startswith('.')
+                sequence_dir.name: sum(1 for _ in os.scandir(sequence_dir))
+                for sequence_dir in os.scandir(patient_dir) if not sequence_dir.name.startswith('.')
             }
             for patient_dir in os.scandir(self.root_dir) if not patient_dir.name.startswith('.')
         }
