@@ -62,7 +62,6 @@ class RegistrationHelper:
         return Sitk.ReadImage(self.moving_image_dir), \
                Sitk.ReadImage(self.fixed_image_dir)
 
-
     # Computes the dicom files from the reader and returns a "3D"
     # image, that will be then resampled.
     def compute_dicom_files(self, reader_first, reader_second):
@@ -119,7 +118,7 @@ class RegistrationHelper:
         for image in images:
             print(str(image.shape))
             depth_level, _, _ = image.shape
-            plt.imshow(image[:, :, depth_level // 2])
+            plt.imshow(image[depth_level // 2, :, :])
             plt.show()
         print("--------------------------------------")
 
@@ -164,10 +163,16 @@ class RegistrationHelper:
         # Second resampling process with the centered transformation.
         initial_transformation = self.get_initial_transform(fixed_image, resampled_image)
         resampled_image = self.final_resample(fixed_image, resampled_image, initial_transformation)
+        pre_coreg = resampled_image
 
         # Third resampling process with the coregistration transformation.
         secondary_transformation = self.get_secondary_transform(fixed_image, resampled_image, initial_transformation)
         resampled_image = self.final_resample(fixed_image, resampled_image, secondary_transformation)
+
+        self.plot_images(Sitk.GetArrayFromImage(moving_image),
+                         Sitk.GetArrayFromImage(fixed_image),
+                         Sitk.GetArrayFromImage(pre_coreg),
+                         Sitk.GetArrayFromImage(resampled_image))
 
         # Write the image in the specified format.
         if save_on_disk:
